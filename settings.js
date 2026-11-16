@@ -85,11 +85,9 @@ async function rollbackRestore(snapshot){
  renderTab();updMini();renderSelbar();
 }
 async function refreshRestoredAppState(snapshot, restored={}){
- // Re-run the same complete IndexedDB hydration used at app startup. The previous
- // implementation refreshed only a subset of globals, so screens backed by other
- // startup-loaded values could continue showing stale data until the app was relaunched.
- // Close stale sheets first, then hydrate all shared state from the canonical database.
+ // Close stale sheets before rebinding caches; open Reader sheets otherwise keep old data.
  if(typeof layers!=='undefined'&&Array.isArray(layers))while(layers.length)popTop();
+ // Rehydrate the app's shared state from IndexedDB after all restore writes have completed.
  await loadState();
  albums=(await getS('albums'))||[];
  tags=(await getS('tags'))||[];
@@ -98,20 +96,29 @@ async function refreshRestoredAppState(snapshot, restored={}){
  pos=(await getS('pos'))||{};
  seen=new Set((await getS('seen'))||[]);
  epOver=(await getS('epOver'))||{};
- if(typeof rdProg!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdp'))rdProg=restored.rdp||{};
- if(typeof rdFold!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdf'))rdFold=restored.rdf||[];
- if(typeof rdBm!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdb'))rdBm=restored.rdb||{};
- if(typeof rdCats!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdc'))rdCats=restored.rdc||[];
- if(typeof rdMeta!=='undefined'&&restored.rdm)rdMeta=restored.rdm;
- if(typeof wlog!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'wlog'))wlog=restored.wlog||{};
- if(typeof playStats!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'plays'))playStats=restored.plays||{};
- if(typeof eqSet!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'eq')){eqSet=restored.eq||{on:false,levels:null};eqPushed=false;if(typeof eqPush==='function')await eqPush()}
- if(typeof cvFolders!=='undefined'&&restored.cv){cvFolders=restored.cv.folders||[];}
- if(typeof cvCovers!=='undefined'&&restored.cv){cvCovers={};for(const k in(restored.cv.covers||{}))cvCovers[k]=d2b(restored.cv.covers[k])}
+ // Reader loaders are intentionally lazy and normally refuse to reload once initialized.
+ // Force every Reader cache to match the restored database before the screen is painted.
+ rdProg=(await getS('rdp'))||{};
+ rdMeta=(await getS('rdm'))||{};
+ rdFold=(await getS('rdf'))||[];
+ rdBm=(await getS('rdb'))||{};
+ rdCats=(await getS('rdc'))||[];
+ rdSet={mode:'web',fit:'screen',nsize:19,nline:1.7,nfont:'serif',ntheme:'app',sort:'recent',...((await getS('rds'))||{})};
+ if(!rdSet.cat)rdSet.cat={manga:'default',novel:'default'};
+ if(!rdSet.flt)rdSet.flt={unread:false,started:false,completed:false,fav:false,sort:rdSet.sort==='name'?'title':'recent'};
+ if(rdSet.desc===undefined)rdSet.desc=true;
+ if(typeof wlog!=='undefined')wlog=(await wlogLoad())||{};
+ if(typeof playStats!=='undefined')playStats=(await psLoad())||{};
+ if(typeof eqSet!=='undefined'){eqSet=(await eqLoad())||eqSet;eqPushed=false;if(typeof eqPush==='function')await eqPush()}
+ if(typeof cvFolders!=='undefined')cvFolders=(await getS('cvFolders'))||[];
+ if(typeof cvCovers!=='undefined')cvCovers=(await getS('cvCovers'))||{};
  if(typeof reloadMovies==='function')await reloadMovies();
  if(typeof showsCache!=='undefined')showsCache=null;
- // All sheets are closed and every shared store has been rehydrated; repaint the app.
- renderTab();updMini();renderSelbar();
+ updMini();renderSelbar();
+ // renderReader is async; await it so the restored collections are actually drawn now.
+ if(curTab==='reader')await renderReader($('#page'));
+ else renderTab();
+ const top=topLayer();if(top&&typeof top.refresh==='function')top.refresh();
 }
 
 async function restoreBackup(file){
