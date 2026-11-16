@@ -130,7 +130,7 @@ async function restoreBackup(file){
   const mode=await restoreChoice();if(!mode){closeRestoreProgress();return}
   restoreProgress('Creating a safety backup…',10);snapshot=await makeBackup();const safety=await createPreRestoreBackup(snapshot);await restoreYield();restoreStarted=true;
   if(kind==='cine'){
-   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await restoreYield();closeRestoreProgress();await restoreYield();await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();renderTab();updMini();renderSelbar();toast(n+' CineVault movies imported. Your restored shelf is ready. '+safety+'.',5000);return;
+   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.');return;
   }
   const replace=mode==='replace';
   restoreProgress(replace?'Replacing albums, tags and favorites…':'Merging albums, tags and favorites…',15);
@@ -163,12 +163,9 @@ async function restoreBackup(file){
   let n=0;if(j.cv){restoreProgress('Restoring CineVault shelf and artwork…',84);await restoreYield();if(replace){await dbx('movies','readwrite',s=>s.clear());cvFolders=[];cvCovers={};await saveF();await saveC();await reloadMovies()}n=await cineImport(j.cv)}
   restoreProgress('Updating VYLT screens…',95);await restoreYield();
   if(typeof reloadMovies==='function'&&j.cv)await reloadMovies();
-  restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
-  await restoreYield();
   await refreshRestoredAppState(snapshot,{rdp:rdProg,rdf:rdFold,rdb:rdBm,rdc:rdCats,rdm:rdMeta,wlog,plays:playStats,eq:eqSet,cv:{folders:cvFolders,covers:cvCovers}});
-  // One final paint after the progress layer has been removed; no app restart is needed.
-  await restoreYield();renderTab();updMini();renderSelbar();
-  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Your restored library is ready.',5000);
+  restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
+  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Screens are updated.');
  }catch(e){closeRestoreProgress();let rollback='';if(restoreStarted&&snapshot){try{await rollbackRestore(snapshot);rollback=' Previous data was restored from the safety copy.'}catch(re){console.error('VYLT rollback failed',re);rollback=' Automatic recovery could not finish; keep the safety backup file and do not clear app data.'}}toast((e.message||'Could not restore backup.')+rollback);console.error('VYLT restore failed',e)}
  finally{restoreInProgress=false}
 }
