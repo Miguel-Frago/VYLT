@@ -19,7 +19,14 @@ function restoreProgress(label,percent){
 function closeRestoreProgress(){document.getElementById('vylt-restore-progress')?.remove()}
 function restoreChoice(){return new Promise(resolve=>{
  const m=modal('Restore VYLT backup','<p>A backup can be merged with your current library or replace the VYLT organization data on this device.</p><p><b>Merge</b> keeps current data and adds missing backup items. Existing matching entries are preserved where possible.</p><p><b>Replace</b> replaces the data covered by this backup. A safety backup will be created first.</p><div class="row" style="flex-wrap:wrap;margin-top:16px"><button class="b2" id="restore-cancel">Cancel</button><button class="b2" id="restore-merge">Merge</button><button class="b" id="restore-replace">Replace</button></div>');
- const done=v=>{m.close();resolve(v)};
+ // The restore progress layer uses z-index 99999. The normal modal layer is
+ // z-index 60, which put this choice dialog behind the progress overlay and
+ // left restoreBackup() waiting forever at 9%. Keep the choice above it.
+ m.el.style.zIndex='100001';
+ let settled=false;
+ const done=v=>{if(settled)return;settled=true;m.close();resolve(v)};
+ // Closing with the backdrop or X must resolve the pending restore as Cancel.
+ m.el.onclick=e=>{if(e.target===m.el||e.target.closest('[data-x]'))done(null)};
  $('#restore-cancel',m.body).onclick=()=>done(null);
  $('#restore-merge',m.body).onclick=()=>done('merge');
  $('#restore-replace',m.body).onclick=()=>{const ok=confirm('Replace VYLT organization data with this backup? A safety backup will be created first. Data not present in the selected backup may be removed.');if(ok)done('replace')};
