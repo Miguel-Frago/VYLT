@@ -55,3 +55,8 @@ For each issue, send the tab, exact steps, expected result, actual result, and a
 3. Confirm the selected theme remains after navigating to another tab and reopening Settings.
 4. Confirm a floating “Theme changed successfully.” toast appears and disappears after about 5 seconds, matching the backup-restore success toast.
 5. Confirm the launcher icon does not change when switching the in-app theme.
+
+## Latest restore and notification checks
+1. Open a screen or album sheet, then restore a backup containing visibly different albums, favorites, Reader progress, or CineVault items.
+2. When restore completes, the app should return to the current tab with refreshed data immediately; do not restart the app.
+3. Trigger a success or theme-change message. It should appear centered below the header, match the active theme accent/panel colors, show a shrinking progress bar for five seconds, then disappear.

@@ -106,9 +106,10 @@ async function refreshRestoredAppState(snapshot, restored){
  if(typeof cvCovers!=='undefined'&&restored.cv){cvCovers={};for(const k in(restored.cv.covers||{}))cvCovers[k]=d2b(restored.cv.covers[k])}
  if(typeof reloadMovies==='function')await reloadMovies();
  if(typeof showsCache!=='undefined')showsCache=null;
- // Redraw the underlying page and any open full-screen sheet that exposes refresh().
+ // Dismiss screens opened before the restore: many sheets hold their own stale DOM
+ // and do not implement refresh(). Rebuild the current tab from the newly loaded state.
+ if(typeof layers!=='undefined'&&Array.isArray(layers))while(layers.length)popTop();
  renderTab();updMini();renderSelbar();
- const top=topLayer();if(top&&typeof top.refresh==='function')top.refresh();
 }
 
 async function restoreBackup(file){

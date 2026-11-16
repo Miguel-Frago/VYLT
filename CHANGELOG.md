@@ -21,3 +21,7 @@
 - Keep theme selection inside the app, persist the preset and clear custom overrides safely.
 - Show the same floating success toast style as backup restore for 5 seconds after a successful theme change.
 - Keep the launcher icon unchanged when switching in-app themes.
+
+## Restore refresh and themed notification refinement
+- Restore now dismisses stale open sheets/overlays after importing data, then rebuilds the active tab from the restored persisted state so the user does not need to restart the app to see the result.
+- Replaced the bottom plain toast with a centered floating notification below the app header. It uses the active theme colors and a five-second animated progress bar before fading away.
