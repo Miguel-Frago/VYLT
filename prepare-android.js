@@ -70,7 +70,7 @@ const aliases = [
         <activity-alias
             android:name=".MainActivity${label}"
             android:targetActivity=".MainActivity"
-            android:enabled="${theme === 'violet' ? 'true' : 'false'}"
+            android:enabled="${theme === 'gold' ? 'true' : 'false'}"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_vylt_${theme}"
             android:label="VYLT">
@@ -79,9 +79,9 @@ const aliases = [
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>`).join('');
-if (!manifest.includes('android:name=".MainActivityViolet"')) {
-  manifest = manifest.replace('</application>', `${aliases}\n    </application>`);
-}
+// Replace previously generated VYLT aliases so rerunning this script updates their default state too.
+manifest = manifest.replace(/\s*<activity-alias\b(?=[^>]*android:name=\"\.MainActivity(?:Gold|Crimson|Ocean|Forest|Violet|Paper)\")[\s\S]*?<\/activity-alias>/g, '');
+manifest = manifest.replace('</application>', `${aliases}\n    </application>`);
 
 fs.writeFileSync(manifestPath, manifest);
 const res = path.join(android, 'app/src/main/res/xml');

@@ -7,6 +7,15 @@ function onColor(h){const n=parseInt(h.slice(1),16);return(0.299*(n>>16)+0.587*(
 function applyAccent(c){const s=document.documentElement.style;
  if(!/^#[0-9a-f]{6}$/i.test(c||'')){s.removeProperty('--ac');s.removeProperty('--on');return}
  s.setProperty('--ac',c);s.setProperty('--on',onColor(c))}
+function applyCustomTheme(v){const s=document.documentElement.style;const keys=['bg','cd','tx','ac'];if(!v||!keys.every(k=>/^#[0-9a-f]{6}$/i.test(v[k]||''))){keys.forEach(k=>s.removeProperty('--'+k));s.removeProperty('--on');return}keys.forEach(k=>s.setProperty('--'+k,v[k]));s.setProperty('--on',onColor(v.ac))}
+function customThemeEditor(){
+ const root=document.documentElement,cs=getComputedStyle(root),saved={bg:cs.getPropertyValue('--bg').trim(),cd:cs.getPropertyValue('--cd').trim(),tx:cs.getPropertyValue('--tx').trim(),ac:cs.getPropertyValue('--ac').trim()};
+ const m=modal('Custom Theme Editor',`<p class="mu">Adjust VYLT's accent, background, cards and text. Preview changes immediately; Save keeps them on this device.</p><div class="row"><label class="grow">Accent<input id="ct-ac" type="color" value="${saved.ac}"></label><label class="grow">Background<input id="ct-bg" type="color" value="${saved.bg}"></label></div><div class="row"><label class="grow">Cards<input id="ct-cd" type="color" value="${saved.cd}"></label><label class="grow">Text<input id="ct-tx" type="color" value="${saved.tx}"></label></div><div class="row"><button class="b2 grow" id="ct-reset">Reset preview</button><button class="b grow" id="ct-save">Save theme</button></div>`);
+ const read=()=>({ac:$('#ct-ac',m.body).value,bg:$('#ct-bg',m.body).value,cd:$('#ct-cd',m.body).value,tx:$('#ct-tx',m.body).value});
+ ['ac','bg','cd','tx'].forEach(k=>$('#ct-'+k,m.body).oninput=()=>applyCustomTheme(read()));
+ $('#ct-reset',m.body).onclick=()=>{applyCustomTheme(null);applyTheme(curTheme());applyAccent(null);['ac','bg','cd','tx'].forEach(k=>$('#ct-'+k,m.body).value=getComputedStyle(root).getPropertyValue('--'+k).trim())};
+ $('#ct-save',m.body).onclick=async()=>{const v=read();await setS('customTheme',v);applyCustomTheme(v);m.close();toast('Custom theme saved.')};
+}
 
 /* ----- play history (recently played / most played) ----- */
 let playStats=null,psLast={p:'',t:0};

@@ -79,10 +79,10 @@ async function loadState(){
  pos=(await getS('pos'))||{};seen=new Set((await getS('seen'))||[]);epOver=(await getS('epOver'))||{};lastScan=(await getS('lastScan'))||0;
  const idx=await getS('fileIndex');if(idx?.length)setFiles(idx);
  cvFolders=(await getS('cvFolders'))||[];cvCovers=(await getS('cvCovers'))||{};cvMovies=await allMovies();
- normAlbums();applyTheme(await getS('theme'));applyAccent(null);await updateLauncherThemeIcon(curTheme());}
+ normAlbums();applyTheme(await getS('theme'));applyAccent(null);applyCustomTheme(await getS('customTheme'));await updateLauncherThemeIcon(curTheme());}
 
 /* ===== small UI helpers ===== */
-function toast(t){$$('.toast').forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2600)}
+function toast(t,duration=2600){$$('.toast').forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),Math.max(0,Number(duration)||2600))}
 const b2d=b=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(b)});
 const d2b=d=>{if(typeof Blob!=='undefined'&&d instanceof Blob)return d;if(typeof d!=='string')throw new TypeError('Invalid image data: expected a data URL or Blob.');const i=d.indexOf(',');if(i<0)throw new TypeError('Invalid image data URL.');const h=d.slice(0,i),v=d.slice(i+1),m=(h.match(/^data:([^;,]+);base64$/i)||[])[1]||'application/octet-stream';const a=atob(v),u=new Uint8Array(a.length);for(let i=0;i<a.length;i++)u[i]=a.charCodeAt(i);return new Blob([u],{type:m})};
 const sha=async s=>{try{return[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('fv:'+s)))].map(x=>x.toString(16).padStart(2,'0')).join('')}catch(e){return btoa('fv:'+s)}};

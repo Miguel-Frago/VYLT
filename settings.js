@@ -4,8 +4,8 @@ function downloadBackup(data,name){const u=URL.createObjectURL(new Blob([data],{
 async function saveBackup(){
  try{const data=JSON.stringify(await makeBackup());
   const FS=window.Capacitor?.isNativePlatform?.()&&window.Capacitor.Plugins?.Filesystem;
-  if(FS){await FS.writeFile({path:'VYLT/VYLT-backup.json',data,directory:'DOCUMENTS',encoding:'utf8',recursive:true});toast('Saved to Documents/VYLT/VYLT-backup.json')}
-  else{downloadBackup(data,'VYLT-backup.json');toast('VYLT backup file created')}}
+  if(FS){await FS.writeFile({path:'VYLT/VYLT-backup.json',data,directory:'DOCUMENTS',encoding:'utf8',recursive:true});toast('Backup completed successfully · Saved to Documents/VYLT/VYLT-backup.json',5000)}
+  else{downloadBackup(data,'VYLT-backup.json');toast('Backup completed successfully · VYLT-backup.json created',5000)}}
  catch(e){toast('Backup failed: '+(e.message||e))}}
 let restoreInProgress=false;
 const restoreYield=()=>new Promise(resolve=>setTimeout(resolve,0));
@@ -114,7 +114,7 @@ async function restoreBackup(file){
   const mode=await restoreChoice();if(!mode){closeRestoreProgress();return}
   restoreProgress('Creating a safety backup…',10);snapshot=await makeBackup();const safety=await createPreRestoreBackup(snapshot);await restoreYield();restoreStarted=true;
   if(kind==='cine'){
-   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.');return;
+   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.',5000);return;
   }
   const replace=mode==='replace';
   restoreProgress(replace?'Replacing albums, tags and favorites…':'Merging albums, tags and favorites…',15);
@@ -149,14 +149,14 @@ async function restoreBackup(file){
   if(typeof reloadMovies==='function'&&j.cv)await reloadMovies();
   await refreshRestoredAppState(snapshot,{rdp:rdProg,rdf:rdFold,rdb:rdBm,rdc:rdCats,rdm:rdMeta,wlog,plays:playStats,eq:eqSet,cv:{folders:cvFolders,covers:cvCovers}});
   restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
-  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Screens are updated.');
+  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Screens are updated.',5000);
  }catch(e){closeRestoreProgress();let rollback='';if(restoreStarted&&snapshot){try{await rollbackRestore(snapshot);rollback=' Previous data was restored from the safety copy.'}catch(re){console.error('VYLT rollback failed',re);rollback=' Automatic recovery could not finish; keep the safety backup file and do not clear app data.'}}toast((e.message||'Could not restore backup.')+rollback);console.error('VYLT restore failed',e)}
  finally{restoreInProgress=false}
 }
 
 function renderSettings(root){
  root.innerHTML=`<header class="hd"><h1>${ic('sliders',26)} Settings</h1></header><div class="pad">
- <div class="card2"><h3>Theme</h3><div class="sws">${THEMES.map(([k,n,a,b])=>`<button class="sw ${curTheme()==k?'sel':''}" data-th="${k}" style="background:linear-gradient(135deg,${b} 50%,${a} 50%)"><span>${n}</span></button>`).join('')}</div></div>
+ <div class="card2"><h3>Theme</h3><div class="sws">${THEMES.map(([k,n,a,b])=>`<button class="sw ${curTheme()==k?'sel':''}" data-th="${k}" style="background:linear-gradient(135deg,${b} 50%,${a} 50%)"><span>${n}</span></button>`).join('')}</div><div class="row"><button class="b2" id="ct-open">${ic('sliders',16)} Customize theme</button><button class="b2" id="ct-clear">Reset custom theme</button></div></div>
  
  <div class="card2"><h3>Tools</h3><div class="row" style="flex-wrap:wrap"><button class="b2" id="gso">${ic('search',16)} Search everything</button><button class="b2" id="sto">${ic('grid',16)} Storage dashboard</button><button class="b2" id="mhs">${ic('music',16)} Music history</button><button class="b2" id="wts">${ic('clock',16)} Watch history</button><button class="b2" id="eqs">${ic('sliders',16)} Equalizer</button></div></div>
  <div class="card2"><h3>About this build</h3><div class="mu">VYLT 3.0 · albums (nesting, covers, sort), Reader (TXT, PDF, CBR, bookmarks, covers), watch history, biometric unlock, sleep timer, equalizer, search, storage</div></div>
@@ -182,7 +182,8 @@ function renderSettings(root){
  $('#tcm',root).onchange=async e=>{prefs.cacheMB=+e.target.value;await savePrefs();await thumbTrim();tcs()};
  $('#tcc',root).onclick=async()=>{await thumbClear();tcs();toast('Thumbnail cache cleared')};
  $('#mfc',root).onclick=()=>missingModal();
- $('.sws',root).onclick=async e=>{const b=e.target.closest('.sw');if(!b)return;const theme=b.dataset.th;applyTheme(theme);applyAccent(null);await setS('accent','');await setS('theme',theme);$$('.sw',root).forEach(x=>x.classList.toggle('sel',x==b));try{const changed=await updateLauncherThemeIcon(theme);if(changed)toast('Theme and app icon updated.');else toast('Theme updated. Launcher icon changes require the installed Android build.')}catch(err){toast('Theme updated, but the launcher icon could not change: '+(err.message||err));console.error(err)}};
+ $('#ct-open',root).onclick=customThemeEditor;$('#ct-clear',root).onclick=async()=>{await setS('customTheme',null);applyCustomTheme(null);toast('Custom theme reset.')};
+ $('.sws',root).onclick=async e=>{const b=e.target.closest('.sw');if(!b)return;const theme=b.dataset.th;applyTheme(theme);applyAccent(null);applyCustomTheme(null);await setS('customTheme',null);await setS('accent','');await setS('theme',theme);$$('.sw',root).forEach(x=>x.classList.toggle('sel',x==b));try{const changed=await updateLauncherThemeIcon(theme);if(changed)toast('Theme and app icon updated.');else toast('Theme updated. Launcher icon changes require the installed Android build.')}catch(err){toast('Theme updated, but the launcher icon could not change: '+(err.message||err));console.error(err)}};
  $('#gso',root).onclick=openSearch;$('#sto',root).onclick=storageSheet;$('#mhs',root).onclick=()=>historySheet('recent');$('#wts',root).onclick=watchSheet;$('#eqs',root).onclick=eqModal;
  $('#lk',root).onclick=()=>showLock();$('#cp',root).onclick=()=>showLock('set');
  getS('bio').then(v=>$('#bio',root).checked=!!v);
