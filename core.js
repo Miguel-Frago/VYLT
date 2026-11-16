@@ -84,7 +84,7 @@ async function loadState(){
 /* ===== small UI helpers ===== */
 function toast(t){$$('.toast').forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2600)}
 const b2d=b=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(b)});
-const d2b=d=>{const[h,v]=d.split(','),m=h.match(/:(.*?);/)[1],a=atob(v),u=new Uint8Array(a.length);for(let i=0;i<a.length;i++)u[i]=a.charCodeAt(i);return new Blob([u],{type:m})};
+const d2b=d=>{if(typeof Blob!=='undefined'&&d instanceof Blob)return d;if(typeof d!=='string')throw new TypeError('Invalid image data: expected a data URL or Blob.');const i=d.indexOf(',');if(i<0)throw new TypeError('Invalid image data URL.');const h=d.slice(0,i),v=d.slice(i+1),m=(h.match(/^data:([^;,]+);base64$/i)||[])[1]||'application/octet-stream';const a=atob(v),u=new Uint8Array(a.length);for(let i=0;i<a.length;i++)u[i]=a.charCodeAt(i);return new Blob([u],{type:m})};
 const sha=async s=>{try{return[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('fv:'+s)))].map(x=>x.toString(16).padStart(2,'0')).join('')}catch(e){return btoa('fv:'+s)}};
 const shrink=(f,max=700)=>new Promise(r=>{const i=new Image(),u=URL.createObjectURL(f);i.onload=()=>{try{const k=Math.min(1,max/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);c.toBlob(b=>{URL.revokeObjectURL(u);r(b||f)},'image/jpeg',.86)}catch(e){URL.revokeObjectURL(u);r(f)}};i.onerror=()=>{URL.revokeObjectURL(u);r(f)};i.src=u});
 const blobFromPath=async p=>(await fetch(fileUrl(p))).blob();
