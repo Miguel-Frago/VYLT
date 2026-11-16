@@ -84,16 +84,20 @@ async function rollbackRestore(snapshot){
  await dbx('movies','readwrite',s=>s.clear());cvFolders=snapshot.cv?.folders||[];cvCovers={};for(const k in(snapshot.cv?.covers||{}))cvCovers[k]=d2b(snapshot.cv.covers[k]);await saveF();await saveC();await reloadMovies();if(snapshot.cv)await cineImport(snapshot.cv);
  renderTab();updMini();renderSelbar();
 }
-async function refreshRestoredAppState(snapshot, restored){
- // Re-read persisted values after restore. This prevents the UI from depending on stale
- // in-memory references left over from before the import (especially after Replace).
- albums=(await getS('albums'))||albums||[];
- tags=(await getS('tags'))||tags||[];
- fileTags=(await getS('fileTags'))||fileTags||{};
- favs=new Set((await getS('favorites'))||[...(favs||[])]);
- pos=(await getS('pos'))||pos||{};
- seen=new Set((await getS('seen'))||[...(seen||[])]);
- epOver=(await getS('epOver'))||epOver||{};
+async function refreshRestoredAppState(snapshot, restored={}){
+ // Re-run the same complete IndexedDB hydration used at app startup. The previous
+ // implementation refreshed only a subset of globals, so screens backed by other
+ // startup-loaded values could continue showing stale data until the app was relaunched.
+ // Close stale sheets first, then hydrate all shared state from the canonical database.
+ if(typeof layers!=='undefined'&&Array.isArray(layers))while(layers.length)popTop();
+ await loadState();
+ albums=(await getS('albums'))||[];
+ tags=(await getS('tags'))||[];
+ fileTags=(await getS('fileTags'))||{};
+ favs=new Set((await getS('favorites'))||[]);
+ pos=(await getS('pos'))||{};
+ seen=new Set((await getS('seen'))||[]);
+ epOver=(await getS('epOver'))||{};
  if(typeof rdProg!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdp'))rdProg=restored.rdp||{};
  if(typeof rdFold!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdf'))rdFold=restored.rdf||[];
  if(typeof rdBm!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdb'))rdBm=restored.rdb||{};
@@ -106,9 +110,7 @@ async function refreshRestoredAppState(snapshot, restored){
  if(typeof cvCovers!=='undefined'&&restored.cv){cvCovers={};for(const k in(restored.cv.covers||{}))cvCovers[k]=d2b(restored.cv.covers[k])}
  if(typeof reloadMovies==='function')await reloadMovies();
  if(typeof showsCache!=='undefined')showsCache=null;
- // Dismiss screens opened before the restore: many sheets hold their own stale DOM
- // and do not implement refresh(). Rebuild the current tab from the newly loaded state.
- if(typeof layers!=='undefined'&&Array.isArray(layers))while(layers.length)popTop();
+ // All sheets are closed and every shared store has been rehydrated; repaint the app.
  renderTab();updMini();renderSelbar();
 }
 
