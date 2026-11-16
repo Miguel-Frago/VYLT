@@ -15,6 +15,11 @@ const TLABEL=Object.fromEntries(TYPES.map(t=>[t[0],t[1]])),TICON=Object.fromEntr
 const THEMES=[['gold','Midnight Gold','#e8b04a','#0f0e13'],['crimson','Crimson Noir','#ff4d5e','#120a0c'],['ocean','Deep Ocean','#3cc8e6','#08121a'],['forest','Forest','#6fd68b','#0b130e'],['violet','Neon Violet','#b388ff','#0e0a18'],['paper','Paper Light','#b9770e','#f5f1ea']];
 const applyTheme=t=>{if(!t||t==='gold'||t==='default')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=t};
 const curTheme=()=>document.documentElement.dataset.theme||'gold';
+const updateLauncherThemeIcon=async(theme=curTheme())=>{
+ if(!native||!FV?.setLauncherThemeIcon){console.warn('VYLT launcher icon switching is available only in the installed Android build.');return false}
+ try{const r=await FV.setLauncherThemeIcon({theme});if(!r?.updated)throw new Error('Android did not confirm the launcher icon change.');return true}
+ catch(e){console.error('VYLT launcher icon update failed:',e);throw e}
+};
 
 /* a path -> URL the WebView can stream (Capacitor serves local files with Range support) */
 const fileUrl=p=>{const e=String(p).split('/').map(x=>encodeURIComponent(x).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())).join('/');const c=window.Capacitor;return c&&c.convertFileSrc?c.convertFileSrc(e):'file://'+e};
@@ -75,7 +80,7 @@ async function loadState(){
  pos=(await getS('pos'))||{};seen=new Set((await getS('seen'))||[]);epOver=(await getS('epOver'))||{};lastScan=(await getS('lastScan'))||0;
  const idx=await getS('fileIndex');if(idx?.length)setFiles(idx);
  cvFolders=(await getS('cvFolders'))||[];cvCovers=(await getS('cvCovers'))||{};cvMovies=await allMovies();
- normAlbums();applyTheme(await getS('theme'));applyAccent(null);}
+ normAlbums();applyTheme(await getS('theme'));applyAccent(null);await updateLauncherThemeIcon(curTheme());}
 
 /* ===== small UI helpers ===== */
 function toast(t){$$('.toast').forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2600)}

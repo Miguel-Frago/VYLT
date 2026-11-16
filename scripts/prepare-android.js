@@ -39,6 +39,50 @@ const service = `\n        <service\n            android:name="com.filevault.app
 if (!manifest.includes('com.filevault.app.MusicService')) {
   manifest = manifest.replace('</application>', `${service}    </application>`);
 }
+
+// Install theme-specific launcher icon resources.
+for (const density of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
+  const sourceDir = path.join(root, 'native/res', `mipmap-${density}`);
+  const targetDir = path.join(android, 'app/src/main/res', `mipmap-${density}`);
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const theme of ['gold', 'crimson', 'ocean', 'forest', 'violet', 'paper']) {
+    fs.copyFileSync(
+      path.join(sourceDir, `ic_launcher_vylt_${theme}.png`),
+      path.join(targetDir, `ic_launcher_vylt_${theme}.png`)
+    );
+  }
+}
+
+// Give each theme a launcher alias. The native plugin enables one alias at a time.
+const mainActivityPattern = /(<activity\b[^>]*android:name="[^"]*MainActivity"[^>]*>)([\s\S]*?)(<\/activity>)/;
+const mainMatch = manifest.match(mainActivityPattern);
+if (!mainMatch) throw new Error('Could not find the generated MainActivity in AndroidManifest.xml.');
+const launcherFilter = /\s*<intent-filter>\s*<action android:name="android.intent.action.MAIN"\s*\/>\s*<category android:name="android.intent.category.LAUNCHER"\s*\/>\s*<\/intent-filter>/;
+if (launcherFilter.test(mainMatch[2])) {
+  manifest = manifest.replace(mainActivityPattern, (whole, open, body, close) =>
+    open + body.replace(launcherFilter, '') + close
+  );
+}
+const aliases = [
+  ['Gold', 'gold'], ['Crimson', 'crimson'], ['Ocean', 'ocean'],
+  ['Forest', 'forest'], ['Violet', 'violet'], ['Paper', 'paper']
+].map(([label, theme]) => `
+        <activity-alias
+            android:name=".MainActivity${label}"
+            android:targetActivity=".MainActivity"
+            android:enabled="${theme === 'gold' ? 'true' : 'false'}"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_vylt_${theme}"
+            android:label="VYLT">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>`).join('');
+// Replace previously generated VYLT aliases so rerunning this script updates their default state too.
+manifest = manifest.replace(/\s*<activity-alias\b(?=[^>]*android:name=\"\.MainActivity(?:Gold|Crimson|Ocean|Forest|Violet|Paper)\")[\s\S]*?<\/activity-alias>/g, '');
+manifest = manifest.replace('</application>', `${aliases}\n    </application>`);
+
 fs.writeFileSync(manifestPath, manifest);
 const res = path.join(android, 'app/src/main/res/xml');
 fs.mkdirSync(res, { recursive: true });
@@ -46,4 +90,4 @@ fs.copyFileSync(path.join(root, 'native/res/xml/file_paths.xml'), path.join(res,
 const drawable = path.join(android, 'app/src/main/res/drawable');
 fs.mkdirSync(drawable, { recursive: true });
 fs.writeFileSync(path.join(drawable, 'ic_stat_music.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z"/></vector>\n');
-console.log('FileVault Android native plugin and permissions installed.');
+console.log('VYLT Android native plugin, theme launcher icons, and permissions installed.');

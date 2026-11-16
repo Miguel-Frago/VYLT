@@ -240,6 +240,6 @@ async function cineImport(j,fromOldApp){
   /* songs from the old CineVault app were stored inside the backup; keep only the titles so they can be linked to real files */
   r.songs=(r.songs||[]).map(s=>({t:s.t,path:s.path||null}));
   if(r.folder&&!cvFolders.includes(r.folder))cvFolders.push(r.folder);
-  const old=cvMovies.find(x=>x.id==r.id);if(old){if(old.videoPath&&!r.videoPath){r.videoPath=old.videoPath;r.videoName=old.videoName}if(old.sub&&!r.sub)r.sub=old.sub}
+  const old=cvMovies.find(x=>x.id==r.id);if(old){r={...r,...old};if(old.videoPath&&!r.videoPath){r.videoPath=old.videoPath;r.videoName=old.videoName}if(old.sub&&!r.sub)r.sub=old.sub}
   await putMovie(r);n++}
  ensureAnc();await saveF();await reloadMovies();return n}

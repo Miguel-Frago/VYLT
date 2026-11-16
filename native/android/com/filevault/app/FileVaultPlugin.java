@@ -2,6 +2,8 @@ package com.filevault.app;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.ComponentName;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
@@ -37,6 +39,33 @@ import java.util.concurrent.Executors;
 @CapacitorPlugin(name = "FileVault")
 public class FileVaultPlugin extends Plugin {
   private final ExecutorService scanner = Executors.newSingleThreadExecutor();
+
+  @PluginMethod
+  public void setLauncherThemeIcon(PluginCall call) {
+    String theme = call.getString("theme", "violet");
+    String[] themes = new String[]{"gold", "crimson", "ocean", "forest", "violet", "paper"};
+    boolean valid = false;
+    for (String item : themes) if (item.equals(theme)) valid = true;
+    if (!valid) { call.reject("Unknown VYLT theme icon."); return; }
+    try {
+      PackageManager pm = getContext().getPackageManager();
+      String[] aliases = new String[]{"Gold", "Crimson", "Ocean", "Forest", "Violet", "Paper"};
+      for (int i = 0; i < themes.length; i++) {
+        ComponentName component = new ComponentName(getContext(), getContext().getPackageName() + ".MainActivity" + aliases[i]);
+        int state = themes[i].equals(theme)
+          ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+          : PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+        pm.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP);
+      }
+      JSObject result = new JSObject();
+      result.put("theme", theme);
+      result.put("updated", true);
+      call.resolve(result);
+    } catch (Exception e) {
+      call.reject("Could not change the VYLT launcher icon: " + e.getMessage());
+    }
+  }
+
   @PluginMethod
   public void hasStorageAccess(PluginCall call) {
     JSObject ret = new JSObject();
