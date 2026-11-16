@@ -84,20 +84,10 @@ async function rollbackRestore(snapshot){
  await dbx('movies','readwrite',s=>s.clear());cvFolders=snapshot.cv?.folders||[];cvCovers={};for(const k in(snapshot.cv?.covers||{}))cvCovers[k]=d2b(snapshot.cv.covers[k]);await saveF();await saveC();await reloadMovies();if(snapshot.cv)await cineImport(snapshot.cv);
  renderTab();updMini();renderSelbar();
 }
-async function refreshRestoredAppState(snapshot, restored={}){
- // Re-run the same complete IndexedDB hydration used at app startup. The previous
- // implementation refreshed only a subset of globals, so screens backed by other
- // startup-loaded values could continue showing stale data until the app was relaunched.
- // Close stale sheets first, then hydrate all shared state from the canonical database.
- if(typeof layers!=='undefined'&&Array.isArray(layers))while(layers.length)popTop();
- await loadState();
- albums=(await getS('albums'))||[];
- tags=(await getS('tags'))||[];
- fileTags=(await getS('fileTags'))||{};
- favs=new Set((await getS('favorites'))||[]);
- pos=(await getS('pos'))||{};
- seen=new Set((await getS('seen'))||[]);
- epOver=(await getS('epOver'))||{};
+async function refreshRestoredAppState(snapshot, restored){
+ // Rebind every long-lived cache used by screens; a redraw alone cannot fix stale module state.
+ albums=albums||[];tags=tags||[];fileTags=fileTags||{};favs=favs instanceof Set?favs:new Set(favs||[]);
+ pos=pos||{};seen=seen instanceof Set?seen:new Set(seen||[]);epOver=epOver||{};
  if(typeof rdProg!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdp'))rdProg=restored.rdp||{};
  if(typeof rdFold!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdf'))rdFold=restored.rdf||[];
  if(typeof rdBm!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdb'))rdBm=restored.rdb||{};
@@ -110,8 +100,9 @@ async function refreshRestoredAppState(snapshot, restored={}){
  if(typeof cvCovers!=='undefined'&&restored.cv){cvCovers={};for(const k in(restored.cv.covers||{}))cvCovers[k]=d2b(restored.cv.covers[k])}
  if(typeof reloadMovies==='function')await reloadMovies();
  if(typeof showsCache!=='undefined')showsCache=null;
- // All sheets are closed and every shared store has been rehydrated; repaint the app.
+ // Redraw the underlying page and any open full-screen sheet that exposes refresh().
  renderTab();updMini();renderSelbar();
+ const top=topLayer();if(top&&typeof top.refresh==='function')top.refresh();
 }
 
 async function restoreBackup(file){
@@ -123,7 +114,7 @@ async function restoreBackup(file){
   const mode=await restoreChoice();if(!mode){closeRestoreProgress();return}
   restoreProgress('Creating a safety backup…',10);snapshot=await makeBackup();const safety=await createPreRestoreBackup(snapshot);await restoreYield();restoreStarted=true;
   if(kind==='cine'){
-   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await restoreYield();closeRestoreProgress();await restoreYield();await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();renderTab();updMini();renderSelbar();toast(n+' CineVault movies imported. Your restored shelf is ready. '+safety+'.',5000);return;
+   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.');return;
   }
   const replace=mode==='replace';
   restoreProgress(replace?'Replacing albums, tags and favorites…':'Merging albums, tags and favorites…',15);
@@ -156,12 +147,9 @@ async function restoreBackup(file){
   let n=0;if(j.cv){restoreProgress('Restoring CineVault shelf and artwork…',84);await restoreYield();if(replace){await dbx('movies','readwrite',s=>s.clear());cvFolders=[];cvCovers={};await saveF();await saveC();await reloadMovies()}n=await cineImport(j.cv)}
   restoreProgress('Updating VYLT screens…',95);await restoreYield();
   if(typeof reloadMovies==='function'&&j.cv)await reloadMovies();
-  restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
-  await restoreYield();
   await refreshRestoredAppState(snapshot,{rdp:rdProg,rdf:rdFold,rdb:rdBm,rdc:rdCats,rdm:rdMeta,wlog,plays:playStats,eq:eqSet,cv:{folders:cvFolders,covers:cvCovers}});
-  // One final paint after the progress layer has been removed; no app restart is needed.
-  await restoreYield();renderTab();updMini();renderSelbar();
-  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Your restored library is ready.',5000);
+  restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
+  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Screens are updated.');
  }catch(e){closeRestoreProgress();let rollback='';if(restoreStarted&&snapshot){try{await rollbackRestore(snapshot);rollback=' Previous data was restored from the safety copy.'}catch(re){console.error('VYLT rollback failed',re);rollback=' Automatic recovery could not finish; keep the safety backup file and do not clear app data.'}}toast((e.message||'Could not restore backup.')+rollback);console.error('VYLT restore failed',e)}
  finally{restoreInProgress=false}
 }
