@@ -24,12 +24,35 @@ function restoreChoice(){return new Promise(resolve=>{
  $('#restore-merge',m.body).onclick=()=>done('merge');
  $('#restore-replace',m.body).onclick=()=>{const ok=confirm('Replace VYLT organization data with this backup? A safety backup will be created first. Data not present in the selected backup may be removed.');if(ok)done('replace')};
  })}
-function validateVYLTBackup(j){
+// Parse large backups away from the WebView UI thread. Large artwork/lyrics
+// payloads previously made the progress overlay appear frozen at 8%.
+async function parseBackupWithoutBlocking(raw){
+ if(typeof Worker==='undefined'||typeof Blob==='undefined'||!URL.createObjectURL)return JSON.parse(raw);
+ let workerUrl=null,worker=null;
+ try{
+  workerUrl=URL.createObjectURL(new Blob(['self.onmessage=function(e){try{self.postMessage({ok:true,data:JSON.parse(e.data)})}catch(err){self.postMessage({ok:false,error:err&&err.message?err.message:"Invalid JSON"})}}'],{type:'text/javascript'}));
+  worker=new Worker(workerUrl);
+  return await new Promise((resolve,reject)=>{
+   const cleanup=()=>{worker.terminate();URL.revokeObjectURL(workerUrl)};
+   worker.onmessage=e=>{cleanup();if(e.data&&e.data.ok)resolve(e.data.data);else reject(new Error(e.data?.error||'The backup file contains invalid JSON.'))};
+   worker.onerror=()=>{cleanup();try{resolve(JSON.parse(raw))}catch(err){reject(err)}};
+   worker.postMessage(raw);
+  });
+ }catch(e){if(worker)worker.terminate();if(workerUrl)URL.revokeObjectURL(workerUrl);if(e instanceof SyntaxError)throw e;return JSON.parse(raw)}
+}
+async function validateVYLTBackup(j){
  if(!j||typeof j!=='object'||Array.isArray(j))throw Error('The selected file is not a valid backup.');
  const full=Array.isArray(j.albums)&&Array.isArray(j.tags)&&Array.isArray(j.favorites);
  const legacyCine=Array.isArray(j.movies);
  if(!full&&!legacyCine)throw Error('This does not look like a VYLT or CineVault backup.');
- if(full){if(j.albums.some(x=>!x||typeof x!=='object'||!Array.isArray(x.paths)))throw Error('The backup contains an invalid album entry.');if(j.tags.some(x=>typeof x!=='string'))throw Error('The backup contains invalid tags.');if(j.favorites.some(x=>typeof x!=='string'))throw Error('The backup contains invalid favorites.');if(j.fileTags!=null&&(typeof j.fileTags!=='object'||Array.isArray(j.fileTags)))throw Error('The backup contains invalid file tags.');if(j.lyrics!=null&&(typeof j.lyrics!=='object'||Array.isArray(j.lyrics)))throw Error('The backup contains invalid lyrics.');}
+ if(full){
+  const check=async(items,test,message)=>{for(let i=0;i<items.length;i++){if(!test(items[i]))throw Error(message);if(i&&i%500===0){restoreProgress('Checking backup contents… '+i.toLocaleString()+' of '+items.length.toLocaleString(),8);await restoreYield()}}};
+  await check(j.albums,x=>!!x&&typeof x==='object'&&!Array.isArray(x)&&Array.isArray(x.paths),'The backup contains an invalid album entry.');
+  await check(j.tags,x=>typeof x==='string','The backup contains invalid tags.');
+  await check(j.favorites,x=>typeof x==='string','The backup contains invalid favorites.');
+  if(j.fileTags!=null&&(typeof j.fileTags!=='object'||Array.isArray(j.fileTags)))throw Error('The backup contains invalid file tags.');
+  if(j.lyrics!=null&&(typeof j.lyrics!=='object'||Array.isArray(j.lyrics)))throw Error('The backup contains invalid lyrics.');
+ }
  return full?'full':'cine';
 }
 async function createPreRestoreBackup(snapshot){
@@ -80,7 +103,7 @@ async function restoreBackup(file){
  try{
   restoreProgress('Reading backup file…',2);await restoreYield();
   const raw=await file.text();await restoreYield();
-  restoreProgress('Checking backup contents…',8);const j=JSON.parse(raw);const kind=validateVYLTBackup(j);await restoreYield();
+  restoreProgress('Preparing backup data…',7);await restoreYield();restoreProgress('Checking backup contents…',8);const j=await parseBackupWithoutBlocking(raw);await restoreYield();const kind=await validateVYLTBackup(j);await restoreYield();restoreProgress('Backup validated',9);
   const mode=await restoreChoice();if(!mode){closeRestoreProgress();return}
   restoreProgress('Creating a safety backup…',10);snapshot=await makeBackup();const safety=await createPreRestoreBackup(snapshot);await restoreYield();restoreStarted=true;
   if(kind==='cine'){
