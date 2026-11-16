@@ -19,17 +19,47 @@ function restoreProgress(label,percent){
 function closeRestoreProgress(){document.getElementById('vylt-restore-progress')?.remove()}
 function restoreChoice(){return new Promise(resolve=>{
  const m=modal('Restore VYLT backup','<p>A backup can be merged with your current library or replace the VYLT organization data on this device.</p><p><b>Merge</b> keeps current data and adds missing backup items. Existing matching entries are preserved where possible.</p><p><b>Replace</b> replaces the data covered by this backup. A safety backup will be created first.</p><div class="row" style="flex-wrap:wrap;margin-top:16px"><button class="b2" id="restore-cancel">Cancel</button><button class="b2" id="restore-merge">Merge</button><button class="b" id="restore-replace">Replace</button></div>');
- const done=v=>{m.close();resolve(v)};
+ // The restore progress layer uses z-index 99999. The normal modal layer is
+ // z-index 60, which put this choice dialog behind the progress overlay and
+ // left restoreBackup() waiting forever at 9%. Keep the choice above it.
+ m.el.style.zIndex='100001';
+ let settled=false;
+ const done=v=>{if(settled)return;settled=true;m.close();resolve(v)};
+ // Closing with the backdrop or X must resolve the pending restore as Cancel.
+ m.el.onclick=e=>{if(e.target===m.el||e.target.closest('[data-x]'))done(null)};
  $('#restore-cancel',m.body).onclick=()=>done(null);
  $('#restore-merge',m.body).onclick=()=>done('merge');
  $('#restore-replace',m.body).onclick=()=>{const ok=confirm('Replace VYLT organization data with this backup? A safety backup will be created first. Data not present in the selected backup may be removed.');if(ok)done('replace')};
  })}
-function validateVYLTBackup(j){
+// Parse large backups away from the WebView UI thread. Large artwork/lyrics
+// payloads previously made the progress overlay appear frozen at 8%.
+async function parseBackupWithoutBlocking(raw){
+ if(typeof Worker==='undefined'||typeof Blob==='undefined'||!URL.createObjectURL)return JSON.parse(raw);
+ let workerUrl=null,worker=null;
+ try{
+  workerUrl=URL.createObjectURL(new Blob(['self.onmessage=function(e){try{self.postMessage({ok:true,data:JSON.parse(e.data)})}catch(err){self.postMessage({ok:false,error:err&&err.message?err.message:"Invalid JSON"})}}'],{type:'text/javascript'}));
+  worker=new Worker(workerUrl);
+  return await new Promise((resolve,reject)=>{
+   const cleanup=()=>{worker.terminate();URL.revokeObjectURL(workerUrl)};
+   worker.onmessage=e=>{cleanup();if(e.data&&e.data.ok)resolve(e.data.data);else reject(new Error(e.data?.error||'The backup file contains invalid JSON.'))};
+   worker.onerror=()=>{cleanup();try{resolve(JSON.parse(raw))}catch(err){reject(err)}};
+   worker.postMessage(raw);
+  });
+ }catch(e){if(worker)worker.terminate();if(workerUrl)URL.revokeObjectURL(workerUrl);if(e instanceof SyntaxError)throw e;return JSON.parse(raw)}
+}
+async function validateVYLTBackup(j){
  if(!j||typeof j!=='object'||Array.isArray(j))throw Error('The selected file is not a valid backup.');
  const full=Array.isArray(j.albums)&&Array.isArray(j.tags)&&Array.isArray(j.favorites);
  const legacyCine=Array.isArray(j.movies);
  if(!full&&!legacyCine)throw Error('This does not look like a VYLT or CineVault backup.');
- if(full){if(j.albums.some(x=>!x||typeof x!=='object'||!Array.isArray(x.paths)))throw Error('The backup contains an invalid album entry.');if(j.tags.some(x=>typeof x!=='string'))throw Error('The backup contains invalid tags.');if(j.favorites.some(x=>typeof x!=='string'))throw Error('The backup contains invalid favorites.');if(j.fileTags!=null&&(typeof j.fileTags!=='object'||Array.isArray(j.fileTags)))throw Error('The backup contains invalid file tags.');if(j.lyrics!=null&&(typeof j.lyrics!=='object'||Array.isArray(j.lyrics)))throw Error('The backup contains invalid lyrics.');}
+ if(full){
+  const check=async(items,test,message)=>{for(let i=0;i<items.length;i++){if(!test(items[i]))throw Error(message);if(i&&i%500===0){restoreProgress('Checking backup contents… '+i.toLocaleString()+' of '+items.length.toLocaleString(),8);await restoreYield()}}};
+  await check(j.albums,x=>!!x&&typeof x==='object'&&!Array.isArray(x)&&Array.isArray(x.paths),'The backup contains an invalid album entry.');
+  await check(j.tags,x=>typeof x==='string','The backup contains invalid tags.');
+  await check(j.favorites,x=>typeof x==='string','The backup contains invalid favorites.');
+  if(j.fileTags!=null&&(typeof j.fileTags!=='object'||Array.isArray(j.fileTags)))throw Error('The backup contains invalid file tags.');
+  if(j.lyrics!=null&&(typeof j.lyrics!=='object'||Array.isArray(j.lyrics)))throw Error('The backup contains invalid lyrics.');
+ }
  return full?'full':'cine';
 }
 async function createPreRestoreBackup(snapshot){
@@ -54,16 +84,37 @@ async function rollbackRestore(snapshot){
  await dbx('movies','readwrite',s=>s.clear());cvFolders=snapshot.cv?.folders||[];cvCovers={};for(const k in(snapshot.cv?.covers||{}))cvCovers[k]=d2b(snapshot.cv.covers[k]);await saveF();await saveC();await reloadMovies();if(snapshot.cv)await cineImport(snapshot.cv);
  renderTab();updMini();renderSelbar();
 }
+async function refreshRestoredAppState(snapshot, restored){
+ // Rebind every long-lived cache used by screens; a redraw alone cannot fix stale module state.
+ albums=albums||[];tags=tags||[];fileTags=fileTags||{};favs=favs instanceof Set?favs:new Set(favs||[]);
+ pos=pos||{};seen=seen instanceof Set?seen:new Set(seen||[]);epOver=epOver||{};
+ if(typeof rdProg!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdp'))rdProg=restored.rdp||{};
+ if(typeof rdFold!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdf'))rdFold=restored.rdf||[];
+ if(typeof rdBm!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdb'))rdBm=restored.rdb||{};
+ if(typeof rdCats!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdc'))rdCats=restored.rdc||[];
+ if(typeof rdMeta!=='undefined'&&restored.rdm)rdMeta=restored.rdm;
+ if(typeof wlog!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'wlog'))wlog=restored.wlog||{};
+ if(typeof playStats!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'plays'))playStats=restored.plays||{};
+ if(typeof eqSet!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'eq')){eqSet=restored.eq||{on:false,levels:null};eqPushed=false;if(typeof eqPush==='function')await eqPush()}
+ if(typeof cvFolders!=='undefined'&&restored.cv){cvFolders=restored.cv.folders||[];}
+ if(typeof cvCovers!=='undefined'&&restored.cv){cvCovers={};for(const k in(restored.cv.covers||{}))cvCovers[k]=d2b(restored.cv.covers[k])}
+ if(typeof reloadMovies==='function')await reloadMovies();
+ if(typeof showsCache!=='undefined')showsCache=null;
+ // Redraw the underlying page and any open full-screen sheet that exposes refresh().
+ renderTab();updMini();renderSelbar();
+ const top=topLayer();if(top&&typeof top.refresh==='function')top.refresh();
+}
+
 async function restoreBackup(file){
  if(!file||restoreInProgress)return;restoreInProgress=true;let snapshot=null,restoreStarted=false;
  try{
   restoreProgress('Reading backup file…',2);await restoreYield();
   const raw=await file.text();await restoreYield();
-  restoreProgress('Checking backup contents…',8);const j=JSON.parse(raw);const kind=validateVYLTBackup(j);await restoreYield();
+  restoreProgress('Preparing backup data…',7);await restoreYield();restoreProgress('Checking backup contents…',8);const j=await parseBackupWithoutBlocking(raw);await restoreYield();const kind=await validateVYLTBackup(j);await restoreYield();restoreProgress('Backup validated',9);
   const mode=await restoreChoice();if(!mode){closeRestoreProgress();return}
   restoreProgress('Creating a safety backup…',10);snapshot=await makeBackup();const safety=await createPreRestoreBackup(snapshot);await restoreYield();restoreStarted=true;
   if(kind==='cine'){
-   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await restoreYield();renderTab();updMini();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.');return;
+   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.');return;
   }
   const replace=mode==='replace';
   restoreProgress(replace?'Replacing albums, tags and favorites…':'Merging albums, tags and favorites…',15);
@@ -96,7 +147,8 @@ async function restoreBackup(file){
   let n=0;if(j.cv){restoreProgress('Restoring CineVault shelf and artwork…',84);await restoreYield();if(replace){await dbx('movies','readwrite',s=>s.clear());cvFolders=[];cvCovers={};await saveF();await saveC();await reloadMovies()}n=await cineImport(j.cv)}
   restoreProgress('Updating VYLT screens…',95);await restoreYield();
   if(typeof reloadMovies==='function'&&j.cv)await reloadMovies();
-  renderTab();updMini();renderSelbar();restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
+  await refreshRestoredAppState(snapshot,{rdp:rdProg,rdf:rdFold,rdb:rdBm,rdc:rdCats,rdm:rdMeta,wlog,plays:playStats,eq:eqSet,cv:{folders:cvFolders,covers:cvCovers}});
+  restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
   toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Screens are updated.');
  }catch(e){closeRestoreProgress();let rollback='';if(restoreStarted&&snapshot){try{await rollbackRestore(snapshot);rollback=' Previous data was restored from the safety copy.'}catch(re){console.error('VYLT rollback failed',re);rollback=' Automatic recovery could not finish; keep the safety backup file and do not clear app data.'}}toast((e.message||'Could not restore backup.')+rollback);console.error('VYLT restore failed',e)}
  finally{restoreInProgress=false}
@@ -112,7 +164,7 @@ function renderSettings(root){
  <div class="card2"><h3>Lock</h3><div class="row"><button class="b2" id="lk">${ic('lock',16)} Lock now</button><button class="b2" id="cp">Change pattern</button></div>
   <label class="row"><input type="checkbox" id="al" style="width:auto"> Auto-lock after leaving the app</label><label class="row"><input type="checkbox" id="hl" style="width:auto"> Hide the pattern line while drawing</label>
   <label class="row"><input type="checkbox" id="bio" style="width:auto"> Unlock with fingerprint or face (pattern still works)</label></div>
- <div class="card2"><h3>Backup &amp; restore</h3><p class="mu">Saves albums, subfolders, tags, favorites, lyrics, Reader progress and bookmarks, playback history, video resume points and your CineVault shelf. Your real files are never included, so the backup stays small. Restore updates the app screens without requiring a restart.</p>
+ <div class="card2"><h3>Backup &amp; restore</h3><p class="mu">Saves albums, subfolders, tags, favorites, lyrics, Reader progress and bookmarks, playback history, video resume points and your CineVault shelf. Your real files are never included, so the backup stays small. Restore refreshes the active app screens and their in-memory data.</p>
   <div class="row"><button class="b" id="ex">Save backup</button></div><label class="mu">Restore a VYLT backup, or import an older CineVault backup. You will choose Merge or Replace each time; VYLT creates a safety backup first.</label><input type="file" id="im" accept=".json,application/json"></div>
  <div class="card2"><h3>Storage access</h3><p class="mu">Android needs “All files access” to let VYLT list your files. Nothing is copied or uploaded.</p><button class="b2" id="pm">Open storage permission settings</button></div>
  <div class="card2"><h3>Thumbnail cache</h3><p class="mu" id="tcs">Calculating…</p><label class="mu">Maximum size</label><select id="tcm">${[100,300,500,1000].map(v=>`<option value="${v}" ${prefs.cacheMB==v?'selected':''}>${v>=1000?'1 GB':v+' MB'}</option>`).join('')}</select><div class="row"><button class="b2" id="tcc">Clear cache</button></div><p class="mu">Thumbnails are small previews, never your real files. The oldest are removed when the limit is reached.</p></div>
@@ -130,7 +182,7 @@ function renderSettings(root){
  $('#tcm',root).onchange=async e=>{prefs.cacheMB=+e.target.value;await savePrefs();await thumbTrim();tcs()};
  $('#tcc',root).onclick=async()=>{await thumbClear();tcs();toast('Thumbnail cache cleared')};
  $('#mfc',root).onclick=()=>missingModal();
- $('.sws',root).onclick=async e=>{const b=e.target.closest('.sw');if(!b)return;applyTheme(b.dataset.th);applyAccent(null);await setS('accent','');await setS('theme',b.dataset.th);await updateLauncherThemeIcon(b.dataset.th);$$('.sw',root).forEach(x=>x.classList.toggle('sel',x==b))};
+ $('.sws',root).onclick=async e=>{const b=e.target.closest('.sw');if(!b)return;const theme=b.dataset.th;applyTheme(theme);applyAccent(null);await setS('accent','');await setS('theme',theme);$$('.sw',root).forEach(x=>x.classList.toggle('sel',x==b));try{const changed=await updateLauncherThemeIcon(theme);if(changed)toast('Theme and app icon updated.');else toast('Theme updated. Launcher icon changes require the installed Android build.')}catch(err){toast('Theme updated, but the launcher icon could not change: '+(err.message||err));console.error(err)}};
  $('#gso',root).onclick=openSearch;$('#sto',root).onclick=storageSheet;$('#mhs',root).onclick=()=>historySheet('recent');$('#wts',root).onclick=watchSheet;$('#eqs',root).onclick=eqModal;
  $('#lk',root).onclick=()=>showLock();$('#cp',root).onclick=()=>showLock('set');
  getS('bio').then(v=>$('#bio',root).checked=!!v);
