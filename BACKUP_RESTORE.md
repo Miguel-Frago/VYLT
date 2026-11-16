@@ -23,9 +23,3 @@ If an error occurs after restoration begins, VYLT attempts to restore the in-mem
 - Older CineVault-only exports can still be imported.
 - Backup paths refer to files on the original device. Restoring on another device does not copy those original files or guarantee that paths resolve.
 - This implementation has passed JavaScript syntax checks. A full Android build and on-device restore/rollback tests remain required before release.
-
-### Post-restore live refresh
-After applying a backup, VYLT rebinds the in-memory caches used by Reader collections/progress/bookmarks/categories, playback history, equalizer settings, CineVault folders/artwork/movie records, and the shared organization data. It then redraws the active tab and any open refreshable sheet. This avoids relying on a process restart to reload IndexedDB values.
-
-### Theme-specific launcher icons
-The Android build creates one launcher activity alias per built-in theme. The Gold alias is the initial enabled alias, matching the default Gold theme. Selecting a theme invokes the registered native FileVault Capacitor plugin to enable that theme's alias and disable the others. The native Android project must be regenerated/synced and rebuilt for alias or icon resource changes to reach an installed APK.
