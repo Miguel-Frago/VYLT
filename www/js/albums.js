@@ -7,10 +7,10 @@ const baseName=p=>String(p).split('/').pop();
 function renderAlbums(root){
  root.innerHTML=`<header class="hd"><h1>${ic('album',26)} Albums</h1><button class="b" id="na">${ic('plus',16)} Album</button></header>
  <div class="pad"><p class="mu">Albums group your files without moving, copying or deleting them. An album can hold any file types or just one. Inside an album, each subfolder holds exactly one type.</p>
- ${missingCard()}<div id="al">${albums.length?albums.map(a=>`<div class="pl2" data-a="${esc(a.id)}"><div class="av2">${a.cover?`<img alt="" src="${a.cover}">`:ic(a.type==='any'?'album':TICON[a.type],22)}</div><div class="t"><b>${esc(a.name)}</b>${a.description?`<span class="mu ds">${esc(a.description)}</span>`:''}<span class="mu">${albumCount(a)} files${a.folders.length?` · ${a.folders.length} subfolder${a.folders.length>1?'s':''}`:''} · ${esc(typeBadge(a.type))}</span></div>${ic('chev',20,'')}</div>`).join(''):'<div class="empty">No albums yet. Tap “Album” to create one, for example “Thesis” or “Trip 2026”.</div>'}</div></div>`;
+ ${missingCard()}<div id="al">${albums.length?albums.map(a=>`<div class="pl2" data-a="${esc(a.id)}"><div class="av2">${a.cover?`<img alt="" src="${a.cover}">`:ic(a.type==='any'?'album':TICON[a.type],22)}</div><div class="t"><b>${esc(a.name)}</b>${a.description?`<span class="mu ds">${esc(a.description)}</span>`:''}<span class="mu">${albumCount(a)} files${a.folders.length?` · ${a.folders.length} subfolder${a.folders.length>1?'s':''}`:''} · ${esc(typeBadge(a.type))}</span></div><button class="b2" data-lock="${esc(a.id)}" aria-label="${a.lockHash?'Remove album lock':'Lock album'}">${ic('lock',15)} ${a.lockHash?'Unlock':'Lock'}</button>${ic('chev',20,'')}</div>`).join(''):'<div class="empty">No albums yet. Tap “Album” to create one, for example “Thesis” or “Trip 2026”.</div>'}</div></div>`;
  $('#na',root).onclick=()=>createAlbumModal();
  if($('#mcb',root))$('#mcb',root).onclick=()=>missingModal(()=>renderTab());
- $('#al',root).onclick=e=>{const c=e.target.closest('[data-a]');if(c)albumSheet(c.dataset.a)}}
+ $('#al',root).onclick=async e=>{const lb=e.target.closest('[data-lock]');if(lb){e.stopPropagation();const a=albums.find(x=>x.id===lb.dataset.lock);if(a)await configureCollectionLock(a,()=>renderAlbums(root));return}const c=e.target.closest('[data-a]');if(c)albumSheet(c.dataset.a)}}
 
 function createAlbumModal(paths=[]){
  const ts=[...new Set(paths.map(ftype))];
@@ -96,8 +96,37 @@ function detailsModal(o,title,done,save){
  $('#ds',m.body).onclick=async()=>{const n=$('#dn',m.body).value.trim();if(!n)return toast('Enter a name.');
   o.name=n;o.description=$('#dd',m.body).value.trim();o.cover=cover;await(save||saveAlbums)();m.close();done&&done()}}
 
+/* Collection PINs are app-level privacy locks, not file encryption. PIN hashes are stored, never the PIN itself. */
+async function collectionPinHash(o,pin){return sha('vylt-collection:'+o.id+':'+pin)}
+function collectionPinModal(title,confirmLabel='Continue'){
+ return new Promise(resolve=>{
+  const m=modal(title,'<p class="mu">Enter the collection PIN (4–12 digits).</p><input id="cpin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Collection PIN"><button class="b" id="cgo" style="width:100%">'+confirmLabel+'</button>');
+  let done=false;const finish=v=>{if(done)return;done=true;m.close();resolve(v)};
+  m.el.onclick=e=>{if(e.target===m.el||e.target.closest('[data-x]'))finish(null)};
+  $('#cgo',m.body).onclick=()=>{const v=$('#cpin',m.body).value.trim();if(!/^\d{4,12}$/.test(v))return toast('Use 4–12 digits.');finish(v)};
+  $('#cpin',m.body).addEventListener('keydown',e=>{if(e.key==='Enter')$('#cgo',m.body).click()});
+ })}
+async function verifyCollectionAccess(o){
+ if(!o.lockHash)return true;
+ for(let tries=0;tries<3;tries++){
+  const pin=await collectionPinModal('Locked: '+o.name,'Unlock');if(pin===null)return false;
+  if(await collectionPinHash(o,pin)===o.lockHash)return true;
+  toast('Incorrect collection PIN'+(tries<2?' · '+(2-tries)+' tries left':''));
+ }
+ toast('Too many incorrect attempts.');return false;
+}
+async function configureCollectionLock(o,refresh){
+ if(o.lockHash){if(!await verifyCollectionAccess(o))return;o.lockHash='';await saveAlbums();toast('Collection lock removed.');refresh&&refresh();return}
+ const pin=await collectionPinModal('Lock '+o.name,'Set PIN');if(pin===null)return;
+ const again=await collectionPinModal('Confirm collection PIN','Confirm');if(again===null)return;
+ if(pin!==again)return toast('PINs do not match.');
+ o.lockHash=await collectionPinHash(o,pin);await saveAlbums();toast('Collection locked.');refresh&&refresh();
+}
+
 /* ===== album screen ===== */
 function albumSheet(aid){
+ const target=albums.find(x=>x.id===aid);if(!target)return;
+ if(target.lockHash){verifyCollectionAccess(target).then(ok=>{if(ok)albumSheet(aid)});return}
  let flt='all';
  const el=sheet(el=>{
   const a=albums.find(x=>x.id===aid);if(!a){setTimeout(()=>el.close(),0);return}
@@ -113,19 +142,20 @@ function albumSheet(aid){
   ${a.type==='any'&&present.length>1?`<div class="tabs" id="ft">${[['all','All'],...present.map(k=>[k,TLABEL[k]])].map(([k,n])=>`<button data-k="${k}" class="${flt===k?'on':''}">${esc(n)}</button>`).join('')}</div>`:''}
   <div id="atl"></div></div>`;
   $('[data-x]',el).onclick=()=>el.close();
-  $('[data-m]',el).onclick=()=>popMenu([{label:'Edit name, description, cover',icon:'edit',fn:()=>detailsModal(a,'Album details',()=>el.refresh())},{label:'Delete album',icon:'trash',cls:'dn',fn:()=>deleteModal('Delete album “'+a.name+'”?',async()=>{albums=albums.filter(x=>x.id!==a.id);await saveAlbums();el.close()})}]);
+  $('[data-m]',el).onclick=()=>popMenu([{label:'Edit name, description, cover',icon:'edit',fn:()=>detailsModal(a,'Album details',()=>el.refresh())},{label:a.lockHash?'Remove collection lock':'Lock this album',icon:'lock',fn:()=>configureCollectionLock(a,()=>el.refresh())},{label:'Delete album',icon:'trash',cls:'dn',fn:()=>deleteModal('Delete album “'+a.name+'”?',async()=>{albums=albums.filter(x=>x.id!==a.id);await saveAlbums();el.close()})}]);
   $('#af',el).onclick=()=>pickFiles({title:'Add to '+a.name,types:a.type==='any'?null:[a.type],exclude:new Set(a.paths),onDone:async ps=>{if(!ps.length)return;a.paths=[...new Set([...a.paths,...ps])];await saveAlbums();el.refresh();toast(ps.length+' file(s) added. Originals were not moved.')}});
   $('#sf',el).onclick=()=>folderModal(a,()=>el.refresh(),null);
   const host=$('#atl',el);
   mountList(host,{o:a,label:'this album',getRows:()=>all.filter(r=>flt==='all'||(r.f&&r.f.type===flt)),
    onRemove:async p=>{a.paths=a.paths.filter(x=>x!==p);await saveAlbums();el.refresh();toast('Removed from album. The file itself was not touched.')}});
   const ft=$('#ft',el);if(ft)ft.onclick=e=>{const b=e.target.closest('[data-k]');if(b){flt=b.dataset.k;$$('#ft button',el).forEach(x=>x.classList.toggle('on',x===b));host.draw()}};
-  $$('[data-f]',el).forEach(x=>x.onclick=()=>folderSheet(a.id,x.dataset.f))},
+  $$('[data-f]',el).forEach(x=>x.onclick=e=>{if(e.target.closest('[data-folder-lock]'))return;folderSheet(a.id,x.dataset.f)});
+  $$('[data-folder-lock]',el).forEach(x=>x.onclick=async e=>{e.stopPropagation();const f=a.folders.find(y=>y.id===x.dataset.folderLock);if(f)await configureCollectionLock(f,()=>el.refresh())})},
   ()=>{if(curTab==='albums'||curTab==='lib')renderTab()});
  return el}
 
 function folderRow(a,f){const n=subCount(a,f.id);
- return `<div class="pl2" data-f="${esc(f.id)}"><div class="av2">${f.cover?`<img alt="" src="${f.cover}">`:ic('folder',22)}</div><div class="t"><b>${esc(f.name)}</b>${f.description?`<span class="mu ds">${esc(f.description)}</span>`:''}<span class="mu">${f.paths.length} file${f.paths.length==1?'':'s'}${n?` · ${n} subfolder${n>1?'s':''}`:''} · ${esc(f.type==='any'?'type not set':typeBadge(f.type))}</span></div>${ic('chev',20)}</div>`}
+ return `<div class="pl2" data-f="${esc(f.id)}"><div class="av2">${f.cover?`<img alt="" src="${f.cover}">`:ic('folder',22)}</div><div class="t"><b>${esc(f.name)}</b>${f.description?`<span class="mu ds">${esc(f.description)}</span>`:''}<span class="mu">${f.paths.length} file${f.paths.length==1?'':'s'}${n?` · ${n} subfolder${n>1?'s':''}`:''} · ${esc(f.type==='any'?'type not set':typeBadge(f.type))}</span></div><button class="b2" data-folder-lock="${esc(f.id)}" aria-label="${f.lockHash?'Remove subfolder lock':'Lock subfolder'}">${ic('lock',15)} ${f.lockHash?'Unlock':'Lock'}</button>${ic('chev',20)}</div>`}
 
 /* a subfolder can sit inside another subfolder (pid = the parent's id) */
 function folderModal(a,done,pid){
@@ -145,6 +175,7 @@ function deleteModal(title,fn){
 
 /* ===== subfolder screen: exactly one file type, and it can hold more subfolders ===== */
 function folderSheet(aid,fid){
+ const owner=albums.find(x=>x.id===aid),target=owner&&owner.folders.find(x=>x.id===fid);if(target?.lockHash){verifyCollectionAccess(target).then(ok=>{if(ok)folderSheet(aid,fid)});return}
  sheet(el=>{
   const a=albums.find(x=>x.id===aid),f=a&&a.folders.find(x=>x.id===fid);if(!f){setTimeout(()=>el.close(),0);return}
   const rows=f.paths.map(p=>({p,f:byPath.get(p)})),kids=kidsOf(a,f.id);
@@ -156,11 +187,12 @@ function folderSheet(aid,fid){
   ${kids.length?`<h3 class="sh">Subfolders</h3>${kids.map(k=>folderRow(a,k)).join('')}`:''}
   <div id="atl"></div></div>`;
   $('[data-x]',el).onclick=()=>el.close();
-  $('[data-m]',el).onclick=()=>popMenu([{label:'Edit name, description, cover',icon:'edit',fn:()=>detailsModal(f,'Subfolder details',()=>el.refresh())},{label:'Delete subfolder',icon:'trash',cls:'dn',fn:()=>deleteModal('Delete subfolder “'+f.name+'”?',async()=>{const gone=new Set(descIds(a,f.id));a.folders=a.folders.filter(x=>!gone.has(x.id));await saveAlbums();el.close()})}]);
+  $('[data-m]',el).onclick=()=>popMenu([{label:'Edit name, description, cover',icon:'edit',fn:()=>detailsModal(f,'Subfolder details',()=>el.refresh())},{label:f.lockHash?'Remove collection lock':'Lock this subfolder',icon:'lock',fn:()=>configureCollectionLock(f,()=>el.refresh())},{label:'Delete subfolder',icon:'trash',cls:'dn',fn:()=>deleteModal('Delete subfolder “'+f.name+'”?',async()=>{const gone=new Set(descIds(a,f.id));a.folders=a.folders.filter(x=>!gone.has(x.id));await saveAlbums();el.close()})}]);
   if($('#ss',el))$('#ss',el).onclick=async()=>{const t=$('#st',el).value;if(f.paths.some(p=>ftype(p)!==t))return toast('Some files already inside are not '+TLABEL[t].toLowerCase()+'.');f.type=t;await saveAlbums();el.refresh()};
   if($('#af',el))$('#af',el).onclick=()=>pickFiles({title:'Add to '+f.name,types:[f.type],exclude:new Set(f.paths),onDone:async ps=>{if(!ps.length)return;f.paths=[...new Set([...f.paths,...ps])];await saveAlbums();el.refresh();toast(ps.length+' file(s) added. Originals were not moved.')}});
   if($('#sf',el))$('#sf',el).onclick=()=>folderModal(a,()=>el.refresh(),f.id);
-  $$('[data-f]',el).forEach(x=>x.onclick=()=>folderSheet(a.id,x.dataset.f));
+  $$('[data-f]',el).forEach(x=>x.onclick=e=>{if(e.target.closest('[data-folder-lock]'))return;folderSheet(a.id,x.dataset.f)});
+  $$('[data-folder-lock]',el).forEach(x=>x.onclick=async e=>{e.stopPropagation();const f=a.folders.find(y=>y.id===x.dataset.folderLock);if(f)await configureCollectionLock(f,()=>el.refresh())});
   mountList($('#atl',el),{o:f,label:'this subfolder',getRows:()=>rows,
    onRemove:async p=>{f.paths=f.paths.filter(x=>x!==p);await saveAlbums();el.refresh();toast('Removed. The file itself was not touched.')}})},
   ()=>{const t=topLayer();if(t&&t.refresh)t.refresh()});

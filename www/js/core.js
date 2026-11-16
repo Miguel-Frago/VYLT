@@ -15,11 +15,8 @@ const TLABEL=Object.fromEntries(TYPES.map(t=>[t[0],t[1]])),TICON=Object.fromEntr
 const THEMES=[['gold','Midnight Gold','#e8b04a','#0f0e13'],['crimson','Crimson Noir','#ff4d5e','#120a0c'],['ocean','Deep Ocean','#3cc8e6','#08121a'],['forest','Forest','#6fd68b','#0b130e'],['violet','Neon Violet','#b388ff','#0e0a18'],['paper','Paper Light','#b9770e','#f5f1ea']];
 const applyTheme=t=>{if(!t||t==='gold'||t==='default')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=t};
 const curTheme=()=>document.documentElement.dataset.theme||'gold';
-const updateLauncherThemeIcon=async(theme=curTheme())=>{
- if(!native||!FV?.setLauncherThemeIcon){console.warn('VYLT launcher icon switching is available only in the installed Android build.');return false}
- try{const r=await FV.setLauncherThemeIcon({theme});if(!r?.updated)throw new Error('Android did not confirm the launcher icon change.');return true}
- catch(e){console.error('VYLT launcher icon update failed:',e);throw e}
-};
+// Launcher icon aliases are intentionally not toggled at runtime: Android may restart/close the task.
+const updateLauncherThemeIcon=async()=>false;
 
 /* a path -> URL the WebView can stream (Capacitor serves local files with Range support) */
 const fileUrl=p=>{const e=String(p).split('/').map(x=>encodeURIComponent(x).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())).join('/');const c=window.Capacitor;return c&&c.convertFileSrc?c.convertFileSrc(e):'file://'+e};
@@ -80,10 +77,10 @@ async function loadState(){
  pos=(await getS('pos'))||{};seen=new Set((await getS('seen'))||[]);epOver=(await getS('epOver'))||{};lastScan=(await getS('lastScan'))||0;
  const idx=await getS('fileIndex');if(idx?.length)setFiles(idx);
  cvFolders=(await getS('cvFolders'))||[];cvCovers=(await getS('cvCovers'))||{};cvMovies=await allMovies();
- normAlbums();applyTheme(await getS('theme'));applyAccent(null);await updateLauncherThemeIcon(curTheme());}
+ normAlbums();applyTheme(await getS('theme'));applyAccent(null);applyCustomTheme(await getS('customTheme'));}
 
 /* ===== small UI helpers ===== */
-function toast(t){$$('.toast').forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2600)}
+function toast(t,duration=2600){$$('.toast').forEach(x=>x.remove());const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),Math.max(0,Number(duration)||2600))}
 const b2d=b=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(b)});
 const d2b=d=>{if(typeof Blob!=='undefined'&&d instanceof Blob)return d;if(typeof d!=='string')throw new TypeError('Invalid image data: expected a data URL or Blob.');const i=d.indexOf(',');if(i<0)throw new TypeError('Invalid image data URL.');const h=d.slice(0,i),v=d.slice(i+1),m=(h.match(/^data:([^;,]+);base64$/i)||[])[1]||'application/octet-stream';const a=atob(v),u=new Uint8Array(a.length);for(let i=0;i<a.length;i++)u[i]=a.charCodeAt(i);return new Blob([u],{type:m})};
 const sha=async s=>{try{return[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode('fv:'+s)))].map(x=>x.toString(16).padStart(2,'0')).join('')}catch(e){return btoa('fv:'+s)}};
