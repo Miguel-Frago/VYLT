@@ -15,17 +15,25 @@ const TLABEL=Object.fromEntries(TYPES.map(t=>[t[0],t[1]])),TICON=Object.fromEntr
 const THEMES=[['gold','Midnight Gold','#e8b04a','#0f0e13'],['crimson','Crimson Noir','#ff4d5e','#120a0c'],['ocean','Deep Ocean','#3cc8e6','#08121a'],['forest','Forest','#6fd68b','#0b130e'],['violet','Neon Violet','#b388ff','#0e0a18'],['paper','Paper Light','#b9770e','#f5f1ea']];
 const applyTheme=t=>{if(!t||t==='gold'||t==='default')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=t};
 const curTheme=()=>document.documentElement.dataset.theme||'gold';
-// Switch the launcher icon (activity-alias) to match the theme. Skips the native call if the icon is already correct.
+// Launcher icon follows the theme, but the switch is queued and only applied when the app goes to the
+// background. Toggling the launcher alias while the app is on screen can make Android close/restart it.
+let _iconPending=null;
 const updateLauncherThemeIcon=async(theme)=>{
   theme=(!theme||theme==='default')?'gold':theme;
   if(!FV||!FV.setLauncherThemeIcon||!THEMES.some(t=>t[0]===theme))return false;
+  _iconPending=theme;
+  return true;
+};
+const flushLauncherIcon=async()=>{
+  const theme=_iconPending;if(!theme)return;_iconPending=null;
   try{
-    if((await getS('iconTheme'))===theme)return true;
+    if((await getS('iconTheme'))===theme)return;
     await FV.setLauncherThemeIcon({theme});
     await setS('iconTheme',theme);
-    return true;
-  }catch(e){console.error('VYLT launcher icon change failed:',e);return false}
+  }catch(e){console.error('VYLT launcher icon change failed:',e)}
 };
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flushLauncherIcon()});
+window.addEventListener('pagehide',flushLauncherIcon);
 
 /* a path -> URL the WebView can stream (Capacitor serves local files with Range support) */
 const fileUrl=p=>{const e=String(p).split('/').map(x=>encodeURIComponent(x).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase())).join('/');const c=window.Capacitor;return c&&c.convertFileSrc?c.convertFileSrc(e):'file://'+e};
