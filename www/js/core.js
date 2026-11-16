@@ -21,9 +21,8 @@ const updateLauncherThemeIcon=async(theme)=>{
   theme=(!theme||theme==='default')?'gold':theme;
   if(!FV||!FV.setLauncherThemeIcon||!THEMES.some(t=>t[0]===theme))return false;
   try{
-    if((await getS('iconTheme'))===theme)return true;
-    await setS('iconTheme',theme);
     await FV.setLauncherThemeIcon({theme});
+    await setS('iconTheme',theme);
     return true;
   }catch(e){console.error('VYLT launcher icon change failed:',e);return false}
 };
