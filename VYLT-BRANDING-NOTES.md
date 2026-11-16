@@ -1,9 +1,14 @@
-# VYLT branding update
+# VYLT branding and theme launcher icons
 
-This source package changes the visible app name to VYLT, uses the supplied purple secure-media-folder image as the primary Capacitor app icon, and removes the standalone Accent Color settings card so each built-in theme controls its own accent color.
+- Visible app name: VYLT.
+- Supplied purple secure-media-folder artwork is the source design for the launcher icon family.
+- Six launcher icon variants are generated for Midnight Gold, Crimson Noir, Deep Ocean, Forest, Neon Violet, and Paper Light.
+- Android launcher activity aliases allow the app to enable the icon matching the selected theme.
+- Theme selection in Settings updates both the in-app theme and the Android launcher icon.
+- The default launcher alias is Neon Violet, matching the supplied purple artwork until the saved theme is loaded and applied.
 
-The Android application ID remains `com.filevault.app` to preserve upgrade compatibility with existing installs. Native plugin identifiers, IndexedDB names, and backup compatibility identifiers are intentionally retained.
+The Android application ID remains `com.filevault.app` to preserve update compatibility. Native plugin identifiers and existing local data identifiers are unchanged.
 
-The theme-linked Android launcher icon switching is not yet wired to Android launcher aliases in this package. The supplied image is the default launcher icon; theme-dependent launcher icon switching needs a separate native Android implementation and device testing.
+Important Android behavior: launcher icon changes are applied through Android package component aliases. Some launchers may take a short time to refresh the icon or may display a duplicate/old shortcut until their cache refreshes. This implementation must be verified on the target Android device and launcher.
 
-No Android build or device test has been run in this environment.
+No Android APK build or device test has been run in this environment.
