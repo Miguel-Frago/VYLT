@@ -15,3 +15,9 @@
 - Added a Custom Theme Editor for accent, background, card, and text colors, with device-local persistence and reset controls.
 - Applied custom theme settings during startup and cleared custom overrides when switching preset themes.
 - Mirrored updated runtime scripts into `www/js`, which is the script directory loaded by the Android WebView.
+
+## Theme switching stability fix
+- Prevent runtime launcher activity-alias switching when changing or restoring the active theme; Android may restart or close the app when launcher components are toggled.
+- Keep theme selection inside the app, persist the preset and clear custom overrides safely.
+- Show the same floating success toast style as backup restore for 5 seconds after a successful theme change.
+- Keep the launcher icon unchanged when switching in-app themes.

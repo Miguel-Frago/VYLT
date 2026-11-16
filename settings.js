@@ -85,9 +85,15 @@ async function rollbackRestore(snapshot){
  renderTab();updMini();renderSelbar();
 }
 async function refreshRestoredAppState(snapshot, restored){
- // Rebind every long-lived cache used by screens; a redraw alone cannot fix stale module state.
- albums=albums||[];tags=tags||[];fileTags=fileTags||{};favs=favs instanceof Set?favs:new Set(favs||[]);
- pos=pos||{};seen=seen instanceof Set?seen:new Set(seen||[]);epOver=epOver||{};
+ // Re-read persisted values after restore. This prevents the UI from depending on stale
+ // in-memory references left over from before the import (especially after Replace).
+ albums=(await getS('albums'))||albums||[];
+ tags=(await getS('tags'))||tags||[];
+ fileTags=(await getS('fileTags'))||fileTags||{};
+ favs=new Set((await getS('favorites'))||[...(favs||[])]);
+ pos=(await getS('pos'))||pos||{};
+ seen=new Set((await getS('seen'))||[...(seen||[])]);
+ epOver=(await getS('epOver'))||epOver||{};
  if(typeof rdProg!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdp'))rdProg=restored.rdp||{};
  if(typeof rdFold!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdf'))rdFold=restored.rdf||[];
  if(typeof rdBm!=='undefined'&&Object.prototype.hasOwnProperty.call(restored,'rdb'))rdBm=restored.rdb||{};
@@ -114,7 +120,7 @@ async function restoreBackup(file){
   const mode=await restoreChoice();if(!mode){closeRestoreProgress();return}
   restoreProgress('Creating a safety backup…',10);snapshot=await makeBackup();const safety=await createPreRestoreBackup(snapshot);await restoreYield();restoreStarted=true;
   if(kind==='cine'){
-   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();closeRestoreProgress();toast(n+' CineVault movies imported. '+safety+'.',5000);return;
+   restoreProgress('Importing CineVault items…',25);const n=await cineImport(j);restoreProgress('Refreshing your library…',95);await restoreYield();closeRestoreProgress();await restoreYield();await refreshRestoredAppState(null,{cv:{folders:cvFolders,covers:cvCovers}});await restoreYield();renderTab();updMini();renderSelbar();toast(n+' CineVault movies imported. Your restored shelf is ready. '+safety+'.',5000);return;
   }
   const replace=mode==='replace';
   restoreProgress(replace?'Replacing albums, tags and favorites…':'Merging albums, tags and favorites…',15);
@@ -147,9 +153,12 @@ async function restoreBackup(file){
   let n=0;if(j.cv){restoreProgress('Restoring CineVault shelf and artwork…',84);await restoreYield();if(replace){await dbx('movies','readwrite',s=>s.clear());cvFolders=[];cvCovers={};await saveF();await saveC();await reloadMovies()}n=await cineImport(j.cv)}
   restoreProgress('Updating VYLT screens…',95);await restoreYield();
   if(typeof reloadMovies==='function'&&j.cv)await reloadMovies();
-  await refreshRestoredAppState(snapshot,{rdp:rdProg,rdf:rdFold,rdb:rdBm,rdc:rdCats,rdm:rdMeta,wlog,plays:playStats,eq:eqSet,cv:{folders:cvFolders,covers:cvCovers}});
   restoreProgress('Restore complete',100);await restoreYield();closeRestoreProgress();
-  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Screens are updated.',5000);
+  await restoreYield();
+  await refreshRestoredAppState(snapshot,{rdp:rdProg,rdf:rdFold,rdb:rdBm,rdc:rdCats,rdm:rdMeta,wlog,plays:playStats,eq:eqSet,cv:{folders:cvFolders,covers:cvCovers}});
+  // One final paint after the progress layer has been removed; no app restart is needed.
+  await restoreYield();renderTab();updMini();renderSelbar();
+  toast((replace?'Backup replaced VYLT data. ':'Backup merged successfully. ')+safety+'. Your restored library is ready.',5000);
  }catch(e){closeRestoreProgress();let rollback='';if(restoreStarted&&snapshot){try{await rollbackRestore(snapshot);rollback=' Previous data was restored from the safety copy.'}catch(re){console.error('VYLT rollback failed',re);rollback=' Automatic recovery could not finish; keep the safety backup file and do not clear app data.'}}toast((e.message||'Could not restore backup.')+rollback);console.error('VYLT restore failed',e)}
  finally{restoreInProgress=false}
 }
@@ -183,7 +192,7 @@ function renderSettings(root){
  $('#tcc',root).onclick=async()=>{await thumbClear();tcs();toast('Thumbnail cache cleared')};
  $('#mfc',root).onclick=()=>missingModal();
  $('#ct-open',root).onclick=customThemeEditor;$('#ct-clear',root).onclick=async()=>{await setS('customTheme',null);applyCustomTheme(null);toast('Custom theme reset.')};
- $('.sws',root).onclick=async e=>{const b=e.target.closest('.sw');if(!b)return;const theme=b.dataset.th;applyTheme(theme);applyAccent(null);applyCustomTheme(null);await setS('customTheme',null);await setS('accent','');await setS('theme',theme);$$('.sw',root).forEach(x=>x.classList.toggle('sel',x==b));try{const changed=await updateLauncherThemeIcon(theme);if(changed)toast('Theme and app icon updated.');else toast('Theme updated. Launcher icon changes require the installed Android build.')}catch(err){toast('Theme updated, but the launcher icon could not change: '+(err.message||err));console.error(err)}};
+ $('.sws',root).onclick=async e=>{const b=e.target.closest('.sw');if(!b)return;const theme=b.dataset.th;if(!THEMES.some(t=>t[0]===theme))return;const buttons=$$('.sw',root);buttons.forEach(x=>x.disabled=true);try{applyTheme(theme);applyAccent(null);applyCustomTheme(null);await setS('customTheme',null);await setS('accent','');await setS('theme',theme);buttons.forEach(x=>x.classList.toggle('sel',x===b));toast('Theme changed successfully.',5000)}catch(err){console.error('VYLT theme change failed:',err);toast('Could not save the theme. Please try again.',5000)}finally{buttons.forEach(x=>x.disabled=false)}};
  $('#gso',root).onclick=openSearch;$('#sto',root).onclick=storageSheet;$('#mhs',root).onclick=()=>historySheet('recent');$('#wts',root).onclick=watchSheet;$('#eqs',root).onclick=eqModal;
  $('#lk',root).onclick=()=>showLock();$('#cp',root).onclick=()=>showLock('set');
  getS('bio').then(v=>$('#bio',root).checked=!!v);

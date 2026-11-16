@@ -17,11 +17,11 @@ This package is a testing build, not a release certification. Please test on a c
 
 ## 3. Individual album and subfolder locks
 1. Create a test album.
-2. Open its ⋮ menu → Lock this album.
+2. Tap the visible **Lock** button on the album card (or use the album More menu).
 3. Set and confirm a 4–12 digit PIN.
 4. Return to Albums and open the locked album; confirm it asks for the PIN.
 5. Enter a wrong PIN; confirm access is denied. Enter the correct PIN; confirm the album opens.
-6. Open the album, create a nested subfolder, then lock that subfolder from its ⋮ menu.
+6. Open the album, create a nested subfolder, then tap the visible **Lock** button on that subfolder row (or use its More menu).
 7. Confirm opening the subfolder requires its PIN, while the parent album remains accessible.
 8. Remove each lock from its menu after verifying it.
 9. Save a backup and confirm the collection lock state survives a restore to a test install. Do not forget the PIN: this build has no separate recovery flow for collection PINs.
@@ -48,3 +48,10 @@ For each issue, send the tab, exact steps, expected result, actual result, and a
 - Collection PIN locks are app-level access gates, not encryption; someone with direct access to the app database or device files may bypass them.
 - Genuine RAR/ RAR5 archive extraction is not implemented. `.cbr` works only when its contents are ZIP-compatible.
 - A real Android APK build and physical-device regression tests must still be completed in the Android build environment.
+
+## 7. Theme switching crash and notification fix
+1. Open Settings → Theme and select each of the six presets one at a time.
+2. Confirm VYLT stays open and the colors update immediately without leaving/relaunching the app.
+3. Confirm the selected theme remains after navigating to another tab and reopening Settings.
+4. Confirm a floating “Theme changed successfully.” toast appears and disappears after about 5 seconds, matching the backup-restore success toast.
+5. Confirm the launcher icon does not change when switching the in-app theme.

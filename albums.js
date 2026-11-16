@@ -7,10 +7,10 @@ const baseName=p=>String(p).split('/').pop();
 function renderAlbums(root){
  root.innerHTML=`<header class="hd"><h1>${ic('album',26)} Albums</h1><button class="b" id="na">${ic('plus',16)} Album</button></header>
  <div class="pad"><p class="mu">Albums group your files without moving, copying or deleting them. An album can hold any file types or just one. Inside an album, each subfolder holds exactly one type.</p>
- ${missingCard()}<div id="al">${albums.length?albums.map(a=>`<div class="pl2" data-a="${esc(a.id)}"><div class="av2">${a.cover?`<img alt="" src="${a.cover}">`:ic(a.type==='any'?'album':TICON[a.type],22)}</div><div class="t"><b>${esc(a.name)}</b>${a.description?`<span class="mu ds">${esc(a.description)}</span>`:''}<span class="mu">${albumCount(a)} files${a.folders.length?` · ${a.folders.length} subfolder${a.folders.length>1?'s':''}`:''} · ${esc(typeBadge(a.type))}</span></div>${a.lockHash?ic('lock',16,'')+' ':''}${ic('chev',20,'')}</div>`).join(''):'<div class="empty">No albums yet. Tap “Album” to create one, for example “Thesis” or “Trip 2026”.</div>'}</div></div>`;
+ ${missingCard()}<div id="al">${albums.length?albums.map(a=>`<div class="pl2" data-a="${esc(a.id)}"><div class="av2">${a.cover?`<img alt="" src="${a.cover}">`:ic(a.type==='any'?'album':TICON[a.type],22)}</div><div class="t"><b>${esc(a.name)}</b>${a.description?`<span class="mu ds">${esc(a.description)}</span>`:''}<span class="mu">${albumCount(a)} files${a.folders.length?` · ${a.folders.length} subfolder${a.folders.length>1?'s':''}`:''} · ${esc(typeBadge(a.type))}</span></div><button class="b2" data-lock="${esc(a.id)}" aria-label="${a.lockHash?'Remove album lock':'Lock album'}">${ic('lock',15)} ${a.lockHash?'Unlock':'Lock'}</button>${ic('chev',20,'')}</div>`).join(''):'<div class="empty">No albums yet. Tap “Album” to create one, for example “Thesis” or “Trip 2026”.</div>'}</div></div>`;
  $('#na',root).onclick=()=>createAlbumModal();
  if($('#mcb',root))$('#mcb',root).onclick=()=>missingModal(()=>renderTab());
- $('#al',root).onclick=e=>{const c=e.target.closest('[data-a]');if(c)albumSheet(c.dataset.a)}}
+ $('#al',root).onclick=async e=>{const lb=e.target.closest('[data-lock]');if(lb){e.stopPropagation();const a=albums.find(x=>x.id===lb.dataset.lock);if(a)await configureCollectionLock(a,()=>renderAlbums(root));return}const c=e.target.closest('[data-a]');if(c)albumSheet(c.dataset.a)}}
 
 function createAlbumModal(paths=[]){
  const ts=[...new Set(paths.map(ftype))];
@@ -149,12 +149,13 @@ function albumSheet(aid){
   mountList(host,{o:a,label:'this album',getRows:()=>all.filter(r=>flt==='all'||(r.f&&r.f.type===flt)),
    onRemove:async p=>{a.paths=a.paths.filter(x=>x!==p);await saveAlbums();el.refresh();toast('Removed from album. The file itself was not touched.')}});
   const ft=$('#ft',el);if(ft)ft.onclick=e=>{const b=e.target.closest('[data-k]');if(b){flt=b.dataset.k;$$('#ft button',el).forEach(x=>x.classList.toggle('on',x===b));host.draw()}};
-  $$('[data-f]',el).forEach(x=>x.onclick=()=>folderSheet(a.id,x.dataset.f))},
+  $$('[data-f]',el).forEach(x=>x.onclick=e=>{if(e.target.closest('[data-folder-lock]'))return;folderSheet(a.id,x.dataset.f)});
+  $$('[data-folder-lock]',el).forEach(x=>x.onclick=async e=>{e.stopPropagation();const f=a.folders.find(y=>y.id===x.dataset.folderLock);if(f)await configureCollectionLock(f,()=>el.refresh())})},
   ()=>{if(curTab==='albums'||curTab==='lib')renderTab()});
  return el}
 
 function folderRow(a,f){const n=subCount(a,f.id);
- return `<div class="pl2" data-f="${esc(f.id)}"><div class="av2">${f.cover?`<img alt="" src="${f.cover}">`:ic('folder',22)}</div><div class="t"><b>${esc(f.name)}</b>${f.description?`<span class="mu ds">${esc(f.description)}</span>`:''}<span class="mu">${f.paths.length} file${f.paths.length==1?'':'s'}${n?` · ${n} subfolder${n>1?'s':''}`:''} · ${esc(f.type==='any'?'type not set':typeBadge(f.type))}</span></div>${f.lockHash?ic('lock',16,'')+' ':''}${ic('chev',20)}</div>`}
+ return `<div class="pl2" data-f="${esc(f.id)}"><div class="av2">${f.cover?`<img alt="" src="${f.cover}">`:ic('folder',22)}</div><div class="t"><b>${esc(f.name)}</b>${f.description?`<span class="mu ds">${esc(f.description)}</span>`:''}<span class="mu">${f.paths.length} file${f.paths.length==1?'':'s'}${n?` · ${n} subfolder${n>1?'s':''}`:''} · ${esc(f.type==='any'?'type not set':typeBadge(f.type))}</span></div><button class="b2" data-folder-lock="${esc(f.id)}" aria-label="${f.lockHash?'Remove subfolder lock':'Lock subfolder'}">${ic('lock',15)} ${f.lockHash?'Unlock':'Lock'}</button>${ic('chev',20)}</div>`}
 
 /* a subfolder can sit inside another subfolder (pid = the parent's id) */
 function folderModal(a,done,pid){
@@ -190,7 +191,8 @@ function folderSheet(aid,fid){
   if($('#ss',el))$('#ss',el).onclick=async()=>{const t=$('#st',el).value;if(f.paths.some(p=>ftype(p)!==t))return toast('Some files already inside are not '+TLABEL[t].toLowerCase()+'.');f.type=t;await saveAlbums();el.refresh()};
   if($('#af',el))$('#af',el).onclick=()=>pickFiles({title:'Add to '+f.name,types:[f.type],exclude:new Set(f.paths),onDone:async ps=>{if(!ps.length)return;f.paths=[...new Set([...f.paths,...ps])];await saveAlbums();el.refresh();toast(ps.length+' file(s) added. Originals were not moved.')}});
   if($('#sf',el))$('#sf',el).onclick=()=>folderModal(a,()=>el.refresh(),f.id);
-  $$('[data-f]',el).forEach(x=>x.onclick=()=>folderSheet(a.id,x.dataset.f));
+  $$('[data-f]',el).forEach(x=>x.onclick=e=>{if(e.target.closest('[data-folder-lock]'))return;folderSheet(a.id,x.dataset.f)});
+  $$('[data-folder-lock]',el).forEach(x=>x.onclick=async e=>{e.stopPropagation();const f=a.folders.find(y=>y.id===x.dataset.folderLock);if(f)await configureCollectionLock(f,()=>el.refresh())});
   mountList($('#atl',el),{o:f,label:'this subfolder',getRows:()=>rows,
    onRemove:async p=>{f.paths=f.paths.filter(x=>x!==p);await saveAlbums();el.refresh();toast('Removed. The file itself was not touched.')}})},
   ()=>{const t=topLayer();if(t&&t.refresh)t.refresh()});
